@@ -1,6 +1,7 @@
-# Display firmware (Waveshare ESP32-S3-Touch-LCD-1.46)
+# Display firmware (Waveshare ESP32-S3-Touch-LCD-1.85B)
 
-ESP-IDF 5.3.2, LVGL 9.4.0 (downloaded by the build), NimBLE for Bluetooth.
+ESP-IDF 5.3.2, LVGL 9.4.0 (downloaded by the build), NimBLE for Bluetooth. The board has a 360 x 360 round screen (ST77916 over QSPI), CST816S
+touch, a speaker (ES8311 audio chip), a QMI8658 motion sensor, a BQ27220 battery gauge, and a connector for a lithium battery.
 
 ## Build and flash
 One time: install ESP-IDF 5.3.2 (it needs Homebrew's Python 3.11 first on the PATH; on an Intel Mac use /usr/local instead of /opt/homebrew):
@@ -13,55 +14,42 @@ One time: install ESP-IDF 5.3.2 (it needs Homebrew's Python 3.11 first on the PA
     cd esp-idf
     ./install.sh esp32s3
 
-Then, in every new Terminal window, with the display plugged in:
+Then, in every new Terminal window (the first two lines only work once per window), with the display plugged in:
 
     export PATH="/opt/homebrew/opt/python@3.11/libexec/bin:$PATH"
     source ~/esp/esp-idf/export.sh
     cd path/to/go-marker/firmware
-    idf.py set-target esp32s3
-    idf.py build
+    idf.py -B build185 -DSDKCONFIG=sdkconfig185 -DIDF_TARGET=esp32s3 -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.185" -DNAV_BOARD=1_85B build
     ls /dev/cu.usbmodem*
-    idf.py -p /dev/cu.usbmodemXXXX flash
+    idf.py -B build185 -DSDKCONFIG=sdkconfig185 -DIDF_TARGET=esp32s3 -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.185" -DNAV_BOARD=1_85B -p /dev/cu.usbmodemXXXX flash
 
-`set-target` is needed once. The first build downloads LVGL, so it needs internet. Use the port name that `ls` printed in place of
-`/dev/cu.usbmodemXXXX`. Do not pipe the `source` command into anything.
+The first build downloads LVGL and the screen, touch, and audio drivers, so it needs internet. Use the port name that `ls` printed in place of
+`/dev/cu.usbmodemXXXX`. Do not pipe the `source` command into anything. Without `-DIDF_TARGET=esp32s3` a first build targets the original
+ESP32 and runs out of RAM.
 
-If the port does not appear, flip the USB-C plug: one orientation reaches the ESP32-S3 and the other reaches a second chip. To recover a
-stuck board, hold BOOT while plugging it in. Progress and errors are printed over the same USB port (`idf.py -p <port> monitor`).
+If the port does not appear, try another cable (some only charge) or flip the USB-C plug. To recover a stuck board, hold BOOT while plugging it in.
+Progress and errors are printed over the same USB port (`idf.py -B build185 -p <port> monitor`).
 
-## The 1.85B board (Waveshare ESP32-S3-Touch-LCD-1.85B, 360 x 360)
-Same project, a different board: it needs its own build folder and settings. After the one-time ESP-IDF install above, open a new Terminal window (the first two lines below only work once per window) and run:
-
-    export PATH="/opt/homebrew/opt/python@3.11/libexec/bin:$PATH"
-    source ~/esp/esp-idf/export.sh
-    cd path/to/go-marker/firmware
-    idf.py -B build185 -DSDKCONFIG=sdkconfig185 -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.185" -DNAV_BOARD=1_85B build
-    ls /dev/cu.usbmodem*
-    idf.py -B build185 -DSDKCONFIG=sdkconfig185 -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.185" -DNAV_BOARD=1_85B -p /dev/cu.usbmodemXXXX flash
-
-The first build downloads the screen, touch, and audio drivers. The 1.46 and the 1.85B use separate build folders (`build` and `build185`), so you can switch between them.
-Board code for the 1.85B is in `main/board185/`. The red light on this board means power, and the green light means the battery is charging.
+The red light on the board means power, and the green light means the battery is charging.
 
 ## Layout
     main/app_main.c      start-up and the main loop: link, settings, splash, sound
     main/ble_server.c    the Bluetooth service and its characteristics (see ../proto/nav_protocol.h)
     main/lvgl_port.c     LVGL <-> panel glue: display, touch, tick, frame timing log ("perf:" lines)
-    main/board/          board drivers (see ../NOTICE for their source)
-    main/nav_nvs_store.c what is saved across power-offs: trip stats, brightness, voice, units, clock format, theme, page order
+    main/board185/       the board's drivers: screen, touch, I2C, battery gauge, motion sensor, speaker
+    main/nav_nvs_store.c what is saved across power-offs: trip stats, brightness, voice, units, clock format, theme, page order, tire monitoring
     main/board_time.c    the clock chip (PCF85063)
     main/board_sound.c   the speaker (optional); main/voices/make_voices.py makes the spoken phrases
     ../ui  ../proto      the screens and the packet definitions, shared with the simulator
     ../sim/feed.c        the demo ride used when no phone is connected (NAV_DEMO_RIDE)
 
-## Hard-won facts about this board (all verified on the real hardware)
-- The panel needs byte-swapped RGB565. Do it in `flush_cb` with `lv_draw_sw_rgb565_swap()`.
-- No `esp_lcd_panel_mirror()` call: the vendor's mirror setting produced a mirrored image.
-- Partial-redraw areas must be aligned to 4 px in X (the rounder in `lvgl_port.c`).
-- The LCD reset line is on an I2C IO expander (TCA9554, EXIO2): `I2C_Init` and `EXIO_Init` must run first.
-- Pins: I2C SDA 11 / SCL 10; QSPI CLK 40, D0-D3 = 46/45/42/41, CS 21; backlight GPIO 5 (PWM); touch interrupt GPIO 4 (SPD2010 at 0x53);
-  IMU QMI8658 at 0x6A/0x6B; clock PCF85063 at 0x51; speaker I2S DIN 47, LRCK 38, BCK 48.
+## Hard-won facts about this board
+- Pins: I2C SDA 11 / SCL 10; QSPI CS 21, CLK 40, D0-D3 = 46/45/42/41, LCD reset 3; touch reset 1, touch interrupt 4; speaker I2S MCLK 2, BCLK 48,
+  WS 38, DOUT 47, amplifier enable 9. The battery gauge answers at I2C address 0x55 and the motion sensor at 0x6B.
+- The screen takes 18-bit color. LVGL renders 24-bit pixels, and a task on the second core converts them, adds a fine dither, and sends them to the panel while LVGL draws the next piece.
+- The flash runs in QIO mode (`sdkconfig.defaults.185`): the code and fonts are read through the caches, so a faster flash shortens every frame.
 - Big buffers (map data, images) must live in PSRAM. Static arrays in internal RAM starved the Bluetooth controller of memory once ("BLE_INIT: Malloc failed").
 - LVGL's built-in memory pool is 64 KB on the board: avoid anything that makes LVGL allocate a full-screen layer (opacity, clipped corners, fades).
-- Drawing is done by the CPU and is most of the frame time. About 11 frames a second on the map page, which looks smooth in use.
-  What helped most: `-O2`, draw buffers in internal RAM, larger CPU caches, skipping map segments that are off screen, drawing slanted
+- Drawing is done by the CPU and is most of the frame time. The map page runs about 20 frames a second with no route and about 12 with a route showing,
+  which looks smooth in use. What helped most: `-O2`, draw buffers in internal RAM, larger CPU caches, skipping map segments that are off screen, drawing slanted
   lines in short pieces, and filling parks and water with horizontal spans instead of triangles.
