@@ -1,0 +1,76 @@
+# ESP32-S3R8 module: 8 MB octal PSRAM, 16 MB flash. These three PSRAM lines and the
+# flash size are carried over unchanged from Waveshare's own working config for this
+# exact board (vendor_waveshare/sdkconfig.defaults).
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_USE_CAPS_ALLOC=y
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
+# Console/log and flashing over the ESP32-S3's own native USB (the port your Mac sees
+# when the USB-C cable is in the S3 orientation), no separate UART adapter needed.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# NOTE: CONFIG_LV_COLOR_16_SWAP does not exist in LVGL 9's Kconfig (verified against
+# the built managed_components/lvgl__lvgl/Kconfig) - it is the LVGL 8 way to request a
+# byte-swapped RGB565 panel, silently a no-op here. The real fix is requesting
+# LV_COLOR_FORMAT_RGB565_SWAPPED directly in code (main/lvgl_port.c); no sdkconfig
+# entry is needed for it.
+
+# Fonts nav_ui.c draws with (in addition to our own generated bold font, compiled
+# directly as a .c file and needing no Kconfig entry).
+CONFIG_LV_FONT_MONTSERRAT_14=y
+CONFIG_LV_FONT_MONTSERRAT_20=y
+CONFIG_LV_FONT_MONTSERRAT_28=y
+CONFIG_LV_FONT_MONTSERRAT_48=y
+
+# Speed: ESP-IDF builds with -Og (debug) by default, which also applies to LVGL's software
+# renderer. Measured 2026-09-29 at about 6 fps with -Og (draw = 92% of frame time).
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+# During bring-up: on a crash, print the report and HALT instead of rebooting. A reboot loop
+# keeps dropping the USB link, which hides the crash message and makes the board impossible
+# to reflash without the BOOT-button trick (learned the hard way on 2026-09-29).
+CONFIG_ESP_SYSTEM_PANIC_PRINT_HALT=y
+
+# Speed experiment (2026-09-29): larger CPU caches, as in Waveshare's own config. Costs ~48 KB of
+# internal RAM that would otherwise be heap.
+CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB=y
+CONFIG_ESP32S3_DATA_CACHE_64KB=y
+CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
+
+
+# 3 MB app partition (the default 1 MB was 83% full before Bluetooth was added).
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# Bluetooth LE peripheral (NimBLE): the phone connects to us and writes STATUS/ROUTE/WEATHER.
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_NIMBLE_ROLE_CENTRAL=n
+CONFIG_BT_NIMBLE_ROLE_OBSERVER=n
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
+CONFIG_BT_NIMBLE_NVS_PERSIST=y
+# Internal RAM is almost all spoken for. The display's Bluetooth traffic is one write at a time plus small notifications, so the packet
+# buffers can be smaller than the defaults (24 each): this gave back about 5 KB for the motion sensor task.
+CONFIG_BT_NIMBLE_TRANSPORT_ACL_FROM_LL_COUNT=12
+CONFIG_BT_NIMBLE_MSYS_2_BLOCK_COUNT=16
+# Pairing does AES and SHA. The hardware versions need DMA-capable internal RAM, which the screen buffers have used up ("esp-aes: Failed to
+# allocate memory"), so pairing failed. The software versions need none, and pairing only does a few operations.
+CONFIG_MBEDTLS_HARDWARE_AES=n
+CONFIG_MBEDTLS_HARDWARE_SHA=n
+CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=247
+CONFIG_BT_NIMBLE_GAP_DEVICE_NAME_MAX_LEN=32
+
+# main task runs LVGL (touch drags, scrolling) and ran out of the default 3.5 KB: double-exception freeze on swipe (2026-09-29)
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
+
+# Smoothness (2026-10-18): a 1 ms tick lets the main loop sleep for 1 ms instead of up to 10, and LVGL's refresh, animation and touch-reading
+# timers run every 16 ms instead of 33, so a swipe is drawn as soon as the panel can take the frame. (The motion sensor task sleeps 10 ms
+# explicitly now, so it is not affected by the faster tick.)
+CONFIG_FREERTOS_HZ=1000
+# LVGL snapshots: the cached label images are made with lv_snapshot_take_to_draw_buf (ui/nav_ui.c).
+CONFIG_LV_USE_SNAPSHOT=y
+CONFIG_LV_DEF_REFR_PERIOD=16

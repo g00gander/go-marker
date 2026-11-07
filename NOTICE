@@ -1,0 +1,25 @@
+Go Marker
+Copyright 2026 Damian Magista (No Marker, nomarker.co)
+
+Licensed under the Apache License, Version 2.0 (see LICENSE). This project is a hobby project, provided "as is", with no warranty.
+
+Not covered by the Apache license
+- The "Go Marker" and "No Marker" names and the No Marker logo: the splash pictures (ui/splash_logo.c, ui/splash_logo_360.c), ui/assets/splash-source*.png and the
+  app icon. All rights reserved. If you build your own, use your own logo (ui/assets/make_splash_mask.py turns any picture into the splash shape).
+
+Third-party code and data
+- Waveshare board support (firmware/main/board/EXIO, I2C_Driver, PWR_Key, Touch_Driver, and the LCD driver files other than
+  esp_lcd_spd2010): taken from Waveshare's demo for the ESP32-S3-Touch-LCD-1.46. Waveshare did not state a license in these files.
+  They remain Waveshare's work; they are included only so that the firmware builds as it does for the author.
+- Waveshare 1.85B board support (firmware/main/board185): the screen start-up tables (board185/LCD_Driver/st77916_init_tables.h) and the pin
+  assignments, screen, touch, and speaker set-up follow Waveshare's code for the ESP32-S3-Touch-LCD-1.85B (https://github.com/waveshareteam/ESP32-S3-Touch-LCD-1.85B),
+  Apache-2.0. The battery gauge set-up follows Espressif's BQ27220 driver (Apache-2.0).
+- Components the 1.85B build downloads (not included): esp_lcd_st77916, esp_lcd_touch_cst816s, and esp_codec_dev, all from the ESP Component Registry.
+- esp_lcd_spd2010 (firmware/main/board/LCD_Driver/esp_lcd_spd2010): Copyright Espressif Systems (Shanghai) CO LTD, Apache-2.0.
+- LVGL 9.4.0: MIT license, https://github.com/lvgl/lvgl. Not included; the firmware build downloads it, and the simulator needs you to clone it.
+- ESP-IDF 5.3.2: Apache-2.0, https://github.com/espressif/esp-idf. Not included.
+- Montserrat Bold: SIL Open Font License 1.1. ui/fonts/*.c are generated from it; the license text is in ui/fonts/MONTSERRAT-OFL.txt.
+- Street, park and water data shown on the display: (c) OpenStreetMap contributors, Open Database License (https://www.openstreetmap.org/copyright).
+  It is downloaded by the phone while you use the app and is not part of this repository.
+- Routing, place search and (optionally) weather use Apple's MapKit and WeatherKit, under Apple's terms for your developer account.
+  Without WeatherKit the app uses Open-Meteo (https://open-meteo.com, CC BY 4.0, free for non-commercial use).

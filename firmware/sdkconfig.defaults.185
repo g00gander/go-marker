@@ -1,0 +1,12 @@
+# Extra settings for the Waveshare 1.85B build (360 x 360): the UI picks smaller Montserrat sizes at that panel size.
+# Use with: idf.py -B build185 -DSDKCONFIG=sdkconfig185 -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.185" -DNAV_BOARD=1_85B build
+# 24-bit rendering: the panel is driven with 18-bit color (see main/board185)
+CONFIG_LV_COLOR_DEPTH_24=y
+CONFIG_LV_FONT_MONTSERRAT_12=y
+CONFIG_LV_FONT_MONTSERRAT_18=y
+CONFIG_LV_FONT_MONTSERRAT_24=y
+CONFIG_LV_FONT_MONTSERRAT_42=y
+
+# Flash in quad mode (2026-10-18 experiment): the code and the font data are read from flash through the instruction/data caches, and every miss
+# costs the flash's speed. QIO moves four bits a clock instead of two.
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
