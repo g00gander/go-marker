@@ -298,6 +298,7 @@ void nav_link_write(nav_channel_t ch, const uint8_t *d, size_t n)
             if (t.order[k] >= NAV_PAGE_COUNT || (seen & (1u << t.order[k]))) ok = 0; else seen |= (uint8_t)(1u << t.order[k]);
         }
         if (!ok) { stats.rejected++; break; }                /* not a permutation of the screens */
+        t.off_mask &= (uint8_t)((1u << NAV_PAGE_COUNT) - 1);   /* only real screens */
         phone_layout = t;
         layout_seq++;
         break;

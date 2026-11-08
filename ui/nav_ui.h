@@ -69,6 +69,7 @@ void nav_ui_pairing_code(uint32_t code);
 void nav_ui_toast(const char *text);                 /* a short message in the middle of the screen for about 1.5 seconds */                         /* go to the next screen in the swipe strip (the BOOT button); after the last, back to the first */
 /* Screen ids: 0 map, 1 weather, 2 trip, 3 compass, 4 clock, 5 tires. They never change; only their order in the swipe strip does. */
 int nav_ui_set_page_order(const uint8_t *ids, int n);   /* ids[i] = the screen shown i-th; must be a permutation of 0..5; returns 1 if applied */
+void nav_ui_set_pages_off(uint8_t mask);             /* bit (1 << id) set = that screen is left out of the swipe strip; if nothing would be left, the map stays */
 void nav_ui_get_page_order(uint8_t out[6]);          /* the page on screen now (same numbering as nav_ui_show_page) */
 
 /* Compass page: altitude (m), climb rate (m/s, + = climbing), and whether valid. Heading comes from the STATUS GPS course, so it is known only while moving. */

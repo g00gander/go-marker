@@ -17,4 +17,7 @@ void nav_nvs_save_tires_on(int on);
 /* The order of the screens (a permutation of 0..5). Returns 1 and fills out[] if a valid order was saved. */
 int nav_nvs_load_layout(uint8_t out[6]);
 void nav_nvs_save_layout(const uint8_t order[6]);
+/* The screens the phone turned off (bit 1 << id). 0 if none were saved. */
+uint8_t nav_nvs_load_screens_off(void);
+void nav_nvs_save_screens_off(uint8_t mask);
 #endif

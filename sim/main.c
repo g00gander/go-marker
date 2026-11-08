@@ -239,6 +239,7 @@ int main(int argc, char **argv)
     double at = 30.0, hz = 1.0;
     int splash = 0;
     const char *order_arg = NULL;
+    const char *off_arg = NULL;
     const char *battery_arg = NULL, *toast_arg = NULL;
     int page = 0, metric = 0, clock24 = 0, style = 0, wx = -1, night = 0, life_size = 0, live = 0, port = 47800;
     const char *rb_arg = NULL, *tpms_arg = NULL;
@@ -260,6 +261,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--wx") && i + 1 < argc) wx = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--night")) { night = 1; feed_theme_night = 1; }
         else if (!strcmp(argv[i], "--splash")) splash = 1;
+        else if (!strcmp(argv[i], "--off") && i + 1 < argc) off_arg = argv[++i];           /* screens to turn off, e.g. --off 1,4 */
         else if (!strcmp(argv[i], "--order") && i + 1 < argc) order_arg = argv[++i];        /* e.g. --order 4,0,1,2,3 */
         else if (!strcmp(argv[i], "--tpms") && i + 1 < argc) tpms_arg = argv[++i];       /* tire pressures: "36.5,34,30,30" (front, rear, front limit, rear limit; psi) */
         else if (!strcmp(argv[i], "--free")) g_free = 1;           /* the free-ride view, no route */
@@ -325,6 +327,12 @@ int main(int argc, char **argv)
         uint8_t ids[6]; int n = 0;
         for (const char *c = order_arg; *c && n < 6; c++) if (*c >= '0' && *c <= '9') ids[n++] = (uint8_t)(*c - '0');
         if (!nav_ui_set_page_order(ids, n)) fprintf(stderr, "--order: not a permutation of 0..5\n");
+    }
+
+    if (off_arg) {
+        uint8_t mask = 0;
+        for (const char *c = off_arg; *c; c++) if (*c >= '0' && *c <= '5') mask |= (uint8_t)(1u << (*c - '0'));
+        nav_ui_set_pages_off(mask);
     }
 
     if (life_size && !shot) {

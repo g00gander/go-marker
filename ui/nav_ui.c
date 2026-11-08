@@ -162,7 +162,8 @@ static struct {
     lv_obj_t *round, *tv, *tile_nav, *tile_wx, *tile_trip, *tile_cmp, *tile_clk, *tile_tpms;   /* the screens (movable containers) */
     lv_obj_t *slot[NPAGES];              /* the swipe strip's tiles: slot i holds the screen whose id is order[i] */
     uint8_t order[NPAGES];               /* the order the phone chose (all the screens) */
-    uint8_t strip[NPAGES];               /* what is in the slots: the same, minus the tire screen while monitoring is off */
+    uint8_t strip[NPAGES];               /* what is in the slots: the same, minus the screens turned off and the tire screen while monitoring is off */
+    uint8_t off_mask;                    /* the screens the phone turned off (bit 1 << id) */
     int nstrip;                          /* screens in the swipe strip */
     int tires_enabled;
     lv_obj_t *cmp_obj, *cmp_card, *cmp_deg, *cmp_elev, *cmp_vs, *cmp_hold;      /* compass page */
@@ -183,7 +184,7 @@ static struct {
     uint32_t clk_tick;
     lv_obj_t *arrow, *dist, *street;
     lv_obj_t *map, *bar_lbl, *rem_val, *eta_val;
-    lv_obj_t *dot[NPAGES];
+    lv_obj_t *dot[NPAGES];               /* the page indicator */
     lv_obj_t *pw_icon, *pw_temp, *pw_cond, *pw_row, *pw_wind, *pw_wind_val, *pw_wind_sub, *pw_rain, *pw_rain_cap;
     lv_obj_t *hr_time[4], *hr_icon[4], *hr_temp[4], *hr_pop[4];
     lv_obj_t *trip_val[6];
@@ -3013,15 +3014,41 @@ void nav_ui_show_page(int page)
     tile_changed_cb(NULL);
 }
 
-/* Puts the screens in the slots: the phone's order, minus the tire screen while monitoring is off (it waits, hidden, after the last slot).
+/* Whether a screen is in the swipe strip: not turned off on the phone, and for the tires also monitoring on. */
+static int page_in_strip(uint8_t id)
+{
+    if (U.off_mask & (1u << id)) return 0;
+    return id != NAV_PAGE_TPMS || U.tires_enabled;
+}
+
+/* The page indicator: one round dot per screen, spaced evenly along an arc near the bottom edge so the row follows the display's circle. The first screen
+ * is leftmost. */
+#define DOT_R     193.0f           /* design px from the center to the middle of the dots */
+#define DOT_SIZE  7                /* design px */
+#define DOT_PITCH 14.0f            /* along the arc, design px */
+static void dot_place(int i, int n)
+{
+    const float th = ((float)i - (float)(n - 1) / 2.0f) * DOT_PITCH / DOT_R;
+    const float x = SF(206.0f + DOT_R * sinf(th) - DOT_SIZE / 2.0f), y = SF(206.0f + DOT_R * cosf(th) - DOT_SIZE / 2.0f);
+    lv_obj_set_pos(U.dot[i], (lv_coord_t)lroundf(x), (lv_coord_t)lroundf(y));
+}
+
+/* Puts the screens in the slots: the phone's order, minus screens turned off and the tire screen while monitoring is off (they wait, hidden, after the last slot).
  * The first screen can only be swiped left and the last only right; the dots follow. The showing screen stays on (or the first is shown if the tire screen just went away). */
 static void strip_apply(void)
 {
     const int showing = U.nstrip ? nav_ui_active_page() : 0;
     int n = 0;
-    for (int i = 0; i < NPAGES; i++) if (U.order[i] != NAV_PAGE_TPMS || U.tires_enabled) U.strip[n++] = U.order[i];
+    for (int i = 0; i < NPAGES; i++) if (page_in_strip(U.order[i])) U.strip[n++] = U.order[i];
+    if (n == 0) U.strip[n++] = NAV_PAGE_MAP;                                    /* never an empty strip */
     U.nstrip = n;
-    for (int i = n; i < NPAGES; i++) U.strip[i] = NAV_PAGE_TPMS;               /* the parked one */
+    for (int i = n; i < NPAGES; i++) {                                          /* the parked ones: every screen not in the strip */
+        for (int id = 0; id < NPAGES; id++) {
+            int used = 0;
+            for (int k = 0; k < i; k++) if (U.strip[k] == id) used = 1;
+            if (!used) { U.strip[i] = (uint8_t)id; break; }
+        }
+    }
     for (int i = 0; i < NPAGES; i++) {
         lv_obj_t *pg = page_obj(U.strip[i]);
         lv_obj_set_parent(pg, U.slot[i]);
@@ -3034,10 +3061,8 @@ static void strip_apply(void)
         }
     }
     for (int i = 0; i < NPAGES; i++) {
-        if (i < n) {
-            lv_obj_remove_flag(U.dot[i], LV_OBJ_FLAG_HIDDEN);
-            lv_obj_set_pos(U.dot[i], S(206 - (n * 14 - 7) / 2 + i * 14), S(396));
-        } else lv_obj_add_flag(U.dot[i], LV_OBJ_FLAG_HIDDEN);
+        if (i < n) { lv_obj_remove_flag(U.dot[i], LV_OBJ_FLAG_HIDDEN); dot_place(i, n); }
+        else lv_obj_add_flag(U.dot[i], LV_OBJ_FLAG_HIDDEN);
     }
     nav_ui_show_page(showing);
 }
@@ -3047,6 +3072,14 @@ void nav_ui_set_tires_enabled(int enabled)
     enabled = enabled ? 1 : 0;
     if (enabled == U.tires_enabled) return;
     U.tires_enabled = enabled;
+    if (U.tv) strip_apply();
+}
+
+void nav_ui_set_pages_off(uint8_t mask)
+{
+    mask &= (uint8_t)((1u << NPAGES) - 1);
+    if (mask == U.off_mask) return;
+    U.off_mask = mask;
     if (U.tv) strip_apply();
 }
 
@@ -3193,12 +3226,22 @@ void nav_ui_splash_show(int show)
 #define RING_W      40                 /* design px */
 #define RING_SOFT   9                  /* design px of fade on the inner edge */
 #define RING_MAXRECT 28
+#define TM_MAX_X10  500                /* a meter runs from 0 to the pressure the tire should have (the SET value); 50 psi if none is set */
+#define TM_BLUE     0x60A5FA           /* the pressure fill: the blue of the rain on the weather screen, in every theme (the accent is red or gold in some) */
+#define TM_W        60                 /* a meter's width, design px */
+#define TM_TOP      152                /* top of the meters and their height */
+#define TM_H        104
+static const int tm_cx[2] = { 136, 276 };          /* the centers of the front and rear meters */
 static struct {
     nav_tpms_t t;
     int have;                          /* a packet has arrived and is not stale */
     float age;                         /* seconds since the last packet */
-    lv_obj_t *cap[2], *val[2], *unit[2], *sub[2];     /* 0 front, 1 rear */
-    char cap_s[2][16], val_s[2][12], sub_s[2][44];
+    lv_obj_t *cap[2], *val[2], *temp[2], *sub[2];     /* 0 front, 1 rear */
+    lv_obj_t *psi;                                      /* the unit, centered between the two meters, underneath them */
+    lv_obj_t *track[2], *fill[2];                       /* the vertical meters: the empty tube and the pressure */
+    lv_obj_t *lim_tick[2][2], *lim_lbl[2];              /* the red line at the alert pressure, and its psi */
+    char lim_s[2][8];
+    char cap_s[2][16], val_s[2][12], temp_s[2][12], sub_s[2][44];
     lv_obj_t *ring;
     uint8_t *mask;                     /* SZ x SZ coverage of the ring */
     uint16_t *span;                    /* per row: first run start, end, second run start, end (start > end = no run) */
@@ -3230,25 +3273,52 @@ static void tpms_refresh(void)
         const int batt = TP.have && (TP.t.flags & (i ? NAV_TPMS_REAR_BATT : NAV_TPMS_FRONT_BATT));
         const char *name = i ? "REAR" : "FRONT";
         char b[48];
-        if (low) snprintf(b, sizeof b, "%s  LOW", name);
-        else if (valid && temp != 0xFF) snprintf(b, sizeof b, "%s  %u\xC2\xB0""F", name, temp);
+        if (low) snprintf(b, sizeof b, "%s LOW", name);
         else snprintf(b, sizeof b, "%s", name);
         tpms_set_text(TP.cap[i], TP.cap_s[i], sizeof TP.cap_s[i], b);
+        if (valid && temp != 0xFF) snprintf(b, sizeof b, "%u\xC2\xB0""F", temp); else b[0] = 0;
+        tpms_set_text(TP.temp[i], TP.temp_s[i], sizeof TP.temp_s[i], b);
         if (valid) snprintf(b, sizeof b, "%u.%u", x10 / 10, x10 % 10); else snprintf(b, sizeof b, "--");
         tpms_set_text(TP.val[i], TP.val_s[i], sizeof TP.val_s[i], b);
-        if (valid) lv_obj_remove_flag(TP.unit[i], LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(TP.unit[i], LV_OBJ_FLAG_HIDDEN);
-        lv_obj_set_x(TP.val[i], S(valid ? 58 : 101));                                     /* the dashes sit in the middle */
-        lv_obj_set_style_text_align(TP.val[i], valid ? LV_TEXT_ALIGN_RIGHT : LV_TEXT_ALIGN_CENTER, 0);
-        if (batt) snprintf(b, sizeof b, "SENSOR BATTERY LOW");
+        if (batt) snprintf(b, sizeof b, "BATTERY LOW");
         else if (!valid) snprintf(b, sizeof b, "NO DATA");
-        else if (lim && set) snprintf(b, sizeof b, "SET %u   -   ALERT AT %u PSI", (set + 5) / 10, (lim + 5) / 10);
-        else if (lim) snprintf(b, sizeof b, "ALERT AT %u PSI", (lim + 5) / 10);
+        else if (set) snprintf(b, sizeof b, "SET %u", (set + 5) / 10);
         else b[0] = 0;
         tpms_set_text(TP.sub[i], TP.sub_s[i], sizeof TP.sub_s[i], b);
         const uint32_t red = alarm_red();
+        /* the meter: the fill is the pressure, scaled so the tire's set pressure fills it; the red line is the alert pressure */
+        const unsigned full = set ? set : TM_MAX_X10;                             /* the pressure that fills the meter */
+        const unsigned shown = valid ? (x10 > full ? full : x10) : 0;
+        const int fh = (int)((shown * (unsigned)TM_H + full / 2) / full);
+        lv_obj_set_style_bg_color(TP.track[i], lv_color_hex(TH->div), 0);
+        if (fh > 0) {
+            lv_obj_remove_flag(TP.fill[i], LV_OBJ_FLAG_HIDDEN);
+            pos(TP.fill[i], tm_cx[i] - TM_W / 2, TM_TOP + TM_H - fh);
+            lv_obj_set_height(TP.fill[i], S(fh));
+            lv_obj_set_style_bg_color(TP.fill[i], lv_color_hex(low ? red : TM_BLUE), 0);
+        } else lv_obj_add_flag(TP.fill[i], LV_OBJ_FLAG_HIDDEN);
+        if (lim) {                                                                  /* the alert pressure: a red line across the meter and its psi beside it */
+            const unsigned lv = lim > full ? full : lim;
+            const int ly = TM_TOP + TM_H - (int)((lv * (unsigned)TM_H + full / 2) / full);
+            for (int side = 0; side < 2; side++) {
+                lv_obj_remove_flag(TP.lim_tick[i][side], LV_OBJ_FLAG_HIDDEN);
+                pos(TP.lim_tick[i][side], side ? tm_cx[i] : tm_cx[i] - TM_W / 2, ly - 1);
+                lv_obj_set_style_bg_color(TP.lim_tick[i][side], lv_color_hex(red), 0);
+            }
+            if (lim % 10) snprintf(b, sizeof b, "%u.%u", lim / 10, lim % 10); else snprintf(b, sizeof b, "%u", lim / 10);
+            tpms_set_text(TP.lim_lbl[i], TP.lim_s[i], sizeof TP.lim_s[i], b);
+            lv_obj_remove_flag(TP.lim_lbl[i], LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_y(TP.lim_lbl[i], S(ly - 12));
+            lv_obj_set_style_text_color(TP.lim_lbl[i], lv_color_hex(red), 0);
+        } else {
+            for (int side = 0; side < 2; side++) lv_obj_add_flag(TP.lim_tick[i][side], LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(TP.lim_lbl[i], LV_OBJ_FLAG_HIDDEN);
+        }
         lv_obj_set_style_text_color(TP.cap[i], lv_color_hex(low ? red : TH->sub), 0);
         lv_obj_set_style_text_color(TP.val[i], lv_color_hex(low ? red : valid ? TH->text : TH->dim), 0);
         lv_obj_set_style_text_color(TP.sub[i], lv_color_hex(batt ? red : TH->sub), 0);
+        lv_obj_set_style_text_color(TP.temp[i], lv_color_hex(TH->sub), 0);
+        lv_obj_set_style_text_color(TP.psi, lv_color_hex(TH->sub), 0);
     }
 }
 
@@ -3676,34 +3746,51 @@ void nav_ui_init(lv_obj_t *screen)
     /* ---- tire page ---- */
     {
         lv_obj_t *tp = U.tile_tpms;
+        TP.psi = label(tp, FT20, THEME_NIGHT.sub);
+        wid(TP.psi, 60); pos(TP.psi, 176, TM_TOP + TM_H + 67);
+        lv_label_set_text(TP.psi, "PSI");
+        lv_obj_set_style_text_align(TP.psi, LV_TEXT_ALIGN_CENTER, 0);
         for (int i = 0; i < 2; i++) {
-            /* Everything stays inside the ring (inner radius about 166 of 206 design px), so the lines near the top and bottom are short. */
-            const int y = i ? 254 : 102;                                 /* top of the number */
+            /* Everything stays inside the ring (inner radius about 166 of 206 design px): the temperature, the pressure, the meter, then the name and the set pressure. */
+            const int cx = tm_cx[i];
+            TP.val[i] = label(tp, FT48, 0x010101);
+            wid(TP.val[i], 120); pos(TP.val[i], cx - 60, 94);
+            lv_obj_set_style_text_align(TP.val[i], LV_TEXT_ALIGN_CENTER, 0);
+            TP.temp[i] = label(tp, FB22, 0x010101);
+            wid(TP.temp[i], 120); pos(TP.temp[i], cx - 60, 72);
+            lv_obj_set_style_text_align(TP.temp[i], LV_TEXT_ALIGN_CENTER, 0);
+            TP.track[i] = plain(tp, cx - TM_W / 2, TM_TOP, TM_W, TM_H);
+            lv_obj_set_style_radius(TP.track[i], S(10), 0);
+            lv_obj_set_style_bg_opa(TP.track[i], LV_OPA_COVER, 0);
+            TP.fill[i] = plain(tp, cx - TM_W / 2, TM_TOP, TM_W, 1);
+            lv_obj_set_style_radius(TP.fill[i], S(10), 0);
+            lv_obj_set_style_bg_opa(TP.fill[i], LV_OPA_COVER, 0);
+            for (int side = 0; side < 2; side++) {                                  /* the alert line: half a meter wide on each side of the middle */
+                TP.lim_tick[i][side] = plain(tp, cx, TM_TOP, TM_W / 2, 3);
+                lv_obj_set_style_bg_opa(TP.lim_tick[i][side], LV_OPA_COVER, 0);
+                lv_obj_add_flag(TP.lim_tick[i][side], LV_OBJ_FLAG_HIDDEN);
+            }
+            TP.lim_lbl[i] = label(tp, FT20, 0x010101);                              /* its psi, outside the meter: left of the front, right of the rear */
+            wid(TP.lim_lbl[i], 40);
+            pos(TP.lim_lbl[i], i ? cx + TM_W / 2 + 6 : cx - TM_W / 2 - 46, TM_TOP);
+            lv_obj_set_style_text_align(TP.lim_lbl[i], i ? LV_TEXT_ALIGN_LEFT : LV_TEXT_ALIGN_RIGHT, 0);
+            lv_obj_add_flag(TP.lim_lbl[i], LV_OBJ_FLAG_HIDDEN);
             TP.cap[i] = label(tp, FB22, 0x010101);
-            wid(TP.cap[i], 260); pos(TP.cap[i], 76, y - 32);
+            wid(TP.cap[i], 170); pos(TP.cap[i], cx - 85, TM_TOP + TM_H + 6);
             lv_obj_set_style_text_align(TP.cap[i], LV_TEXT_ALIGN_CENTER, 0);
-            TP.val[i] = label(tp, FBN, 0x010101);
-            wid(TP.val[i], 210); pos(TP.val[i], 58, y);
-            lv_obj_set_style_text_align(TP.val[i], LV_TEXT_ALIGN_RIGHT, 0);
-            TP.unit[i] = label(tp, FT20, THEME_NIGHT.sub);
-            pos(TP.unit[i], 276, y + 36);
-            lv_label_set_text(TP.unit[i], "PSI");
             TP.sub[i] = label(tp, FT14, THEME_NIGHT.sub);
-            wid(TP.sub[i], 240); pos(TP.sub[i], 86, y + 68);
+            wid(TP.sub[i], 150); pos(TP.sub[i], cx - 75, TM_TOP + TM_H + 34);
             lv_obj_set_style_text_align(TP.sub[i], LV_TEXT_ALIGN_CENTER, 0);
         }
-        lv_obj_t *dv = plain(tp, 136, 205, 140, 1);
-        lv_obj_set_style_bg_color(dv, lv_color_hex(C_BG), 0);
-        lv_obj_set_style_bg_opa(dv, LV_OPA_COVER, 0);
-        theme_reg(dv, ROLE_DIV);
         tpms_refresh();
     }
 
     /* page dots (on the round layer so they stay put while swiping) */
     for (int i = 0; i < NPAGES; i++) {
-        U.dot[i] = plain(U.round, 206 - (NPAGES * 14 - 7) / 2 + i * 14, 396, 7, 7);
+        U.dot[i] = plain(U.round, 0, 0, DOT_SIZE, DOT_SIZE);
         lv_obj_set_style_radius(U.dot[i], LV_RADIUS_CIRCLE, 0);
         lv_obj_set_style_bg_opa(U.dot[i], LV_OPA_COVER, 0);
+        dot_place(i, NPAGES);
     }
     lv_obj_add_event_cb(U.tv, tile_changed_cb, LV_EVENT_SCROLL_END, NULL);
 

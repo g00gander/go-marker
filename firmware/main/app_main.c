@@ -88,6 +88,7 @@ void app_main(void)
     nav_ui_img_alloc = psram_alloc;                    /* the marker image goes to PSRAM: internal RAM is needed by the Bluetooth controller */
     nav_ui_init(screen);
     { uint8_t order[6]; if (nav_nvs_load_layout(order)) nav_ui_set_page_order(order, 6); }       /* the screen order chosen on the phone */
+    nav_ui_set_pages_off(nav_nvs_load_screens_off());     /* the screens turned off on the phone */
     uint32_t layout_seen = 0;
     nav_ui_set_tires_enabled(nav_nvs_load_tires_on());     /* the tire screen is only in the strip while the phone has monitoring on */
     uint32_t tires_seen = 0;
@@ -240,8 +241,10 @@ void app_main(void)
             if (nl && lseq != layout_seen) {
                 layout_seen = lseq;
                 if (nav_ui_set_page_order(nl->order, NAV_PAGE_COUNT)) {
+                    nav_ui_set_pages_off(nl->off_mask);
                     nav_nvs_save_layout(nl->order);
-                    ESP_LOGI(TAG, "screen order from the phone: %d %d %d %d %d", nl->order[0], nl->order[1], nl->order[2], nl->order[3], nl->order[4]);
+                    nav_nvs_save_screens_off(nl->off_mask);
+                    ESP_LOGI(TAG, "screen order from the phone: %d %d %d %d %d %d, off mask 0x%02x", nl->order[0], nl->order[1], nl->order[2], nl->order[3], nl->order[4], nl->order[5], nl->off_mask);
                 }
             }
         }

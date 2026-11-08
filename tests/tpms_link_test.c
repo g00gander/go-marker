@@ -71,20 +71,30 @@ int main(void)
     const nav_layout_t *l = nav_link_layout(&seq);
     CHECK(l && seq == 1 && l->count == 6 && l->order[0] == 5 && l->order[5] == 0);
 
+    CHECK(l->off_mask == 0);                                                          /* no mask sent: nothing is off */
+    /* the same list with a ninth byte turns screens off; bits past the last screen are dropped */
+    uint8_t lay9[9] = { NAV_PROTO_VERSION, 6, 0, 1, 2, 3, 4, 5, 0xC2 };
+    nav_link_write(NAV_CH_LAYOUT, lay9, 9);
+    l = nav_link_layout(&seq);
+    CHECK(l && seq == 2 && l->off_mask == 0x02 && l->order[0] == 0);
+    nav_link_write(NAV_CH_LAYOUT, lay, 8);                                             /* and an eight-byte list clears the mask again */
+    l = nav_link_layout(&seq);
+    CHECK(l && seq == 3 && l->off_mask == 0);
+
     /* a list from an older phone app (five screens, 7 bytes) gets the tire page last */
     const uint8_t old5[7] = { NAV_PROTO_VERSION, 5, 4, 0, 1, 2, 3 };
     nav_link_write(NAV_CH_LAYOUT, old5, 7);
     l = nav_link_layout(&seq);
-    CHECK(l && seq == 2 && l->count == 6 && l->order[0] == 4 && l->order[4] == 3 && l->order[5] == NAV_PAGE_TPMS);
+    CHECK(l && seq == 4 && l->count == 6 && l->order[0] == 4 && l->order[4] == 3 && l->order[5] == NAV_PAGE_TPMS);
 
     /* not a permutation: refused, the last good one stays */
     uint8_t dup[8] = { NAV_PROTO_VERSION, 6, 0, 0, 1, 2, 3, 4 };
-    nav_link_write(NAV_CH_LAYOUT, dup, 8); CHECK(seq == 2);
+    nav_link_write(NAV_CH_LAYOUT, dup, 8); CHECK(seq == 4);
     const uint8_t old_dup[7] = { NAV_PROTO_VERSION, 5, 0, 0, 1, 2, 3 };
-    nav_link_write(NAV_CH_LAYOUT, old_dup, 7); CHECK(seq == 2);
+    nav_link_write(NAV_CH_LAYOUT, old_dup, 7); CHECK(seq == 4);
     const uint8_t old_bad[7] = { NAV_PROTO_VERSION, 5, 0, 1, 2, 3, 5 };               /* the tire id inside a five-screen list */
-    nav_link_write(NAV_CH_LAYOUT, old_bad, 7); CHECK(seq == 2);
-    nav_link_write(NAV_CH_LAYOUT, lay, 6); CHECK(seq == 2);                          /* short */
+    nav_link_write(NAV_CH_LAYOUT, old_bad, 7); CHECK(seq == 4);
+    nav_link_write(NAV_CH_LAYOUT, lay, 6); CHECK(seq == 4);                          /* short */
 
     printf(failures ? "%d FAILED\n" : "tpms_link_test: all passed\n", failures);
     return failures != 0;

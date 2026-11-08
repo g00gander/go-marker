@@ -91,6 +91,25 @@ void nav_nvs_save_layout(const uint8_t order[6])
     nvs_close(h);
 }
 
+uint8_t nav_nvs_load_screens_off(void)
+{
+    nvs_handle_t h;
+    if (nvs_open("cfg", NVS_READONLY, &h) != ESP_OK) return 0;
+    uint8_t m = 0;
+    if (nvs_get_u8(h, "screens_off", &m) != ESP_OK) m = 0;
+    nvs_close(h);
+    return m;
+}
+
+void nav_nvs_save_screens_off(uint8_t mask)
+{
+    nvs_handle_t h;
+    if (nvs_open("cfg", NVS_READWRITE, &h) != ESP_OK) return;
+    nvs_set_u8(h, "screens_off", mask);
+    nvs_commit(h);
+    nvs_close(h);
+}
+
 int nav_nvs_load_tires_on(void)
 {
     nvs_handle_t h;

@@ -140,7 +140,7 @@ _Static_assert(sizeof(nav_weather_t) == 28, "nav_weather_t must be 28 bytes");
  *   TIME     2CAF0009-...   write with response      nav_time_t (clock + time zone)
  *   TELEMETRY 2CAF000A-...  write without response   nav_telemetry_t (altitude, climb rate; ~1 Hz)
  *   PAGE     2CAF000B-...   read + notify            u8: the screen id the display is showing (NAV_PAGE_*)
- *   LAYOUT   2CAF000C-...   write with response      nav_layout_t (the order of the screens)
+ *   LAYOUT   2CAF000C-...   write with response      nav_layout_t (the order of the screens, and which are off)
  *   ROUNDABOUT 2CAF000D-... write with response      nav_roundabout_t (the exits of the next roundabout)
  *   TRAFFIC  2CAF000E-...   write with response      slow stretches of the route, and an alert
  *   MOTION   2CAF000F-...   write + notify           the display's motion sensor (1.85B): start/stop, then a stream of readings
@@ -183,16 +183,19 @@ _Static_assert(sizeof(nav_weather_t) == 28, "nav_weather_t must be 28 bytes");
 /* LAYOUT characteristic: the order of the screens in the display's swipe strip. order[i] is the id (NAV_PAGE_*) of the
  * i-th screen. It must be a permutation of 0..NAV_PAGE_COUNT-1; anything else is ignored. The display remembers it
  * across power cycles. Screen ids never change, only their order. A list from before the tire page existed (count 5, 7 bytes) is still
- * accepted: the tire page goes last. */
+ * accepted: the tire page goes last. off_mask has a bit (1 << id) set for each screen the phone turned off; those screens are left out of the
+ * swipe strip. A list without it (8 bytes) turns nothing off. If the mask would leave nothing to show, the display shows the map anyway. */
 #pragma pack(push, 1)
 typedef struct {
     uint8_t proto_version;    /* NAV_PROTO_VERSION */
     uint8_t count;            /* NAV_PAGE_COUNT */
     uint8_t order[NAV_PAGE_COUNT];
+    uint8_t off_mask;         /* bit (1 << NAV_PAGE_*) set = that screen is turned off */
 } nav_layout_t;
 #pragma pack(pop)
-_Static_assert(sizeof(nav_layout_t) == 8, "nav_layout_t must be 8 bytes");
+_Static_assert(sizeof(nav_layout_t) == 9, "nav_layout_t must be 9 bytes");
 #define NAV_LAYOUT_V1_BYTES 7     /* the five-screen list that older phone apps send */
+#define NAV_LAYOUT_V2_BYTES 8     /* six screens, no off mask */
 /* ROUNDABOUT characteristic: the exits of the first roundabout still ahead on the route, so the turn arrow can draw the real ones.
  * Directions are in 2-degree units, clockwise from straight ahead of the road you enter by: 0 = straight on, +45 = right (90 deg),
  * -45 = left, +-90 = back the way you came. Listed in the order you pass them (counter-clockwise). count 0 = no data: draw a plain

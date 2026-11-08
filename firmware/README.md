@@ -4,6 +4,8 @@ ESP-IDF 5.3.2, LVGL 9.4.0 (downloaded by the build), NimBLE for Bluetooth. The b
 touch, a speaker (ES8311 audio chip), a QMI8658 motion sensor, a BQ27220 battery gauge, and a connector for a lithium battery.
 
 ## Build and flash
+On Windows, follow [WINDOWS.md](WINDOWS.md) instead. These steps are for macOS.
+
 One time: install ESP-IDF 5.3.2 (it needs Homebrew's Python 3.11 first on the PATH; on an Intel Mac use /usr/local instead of /opt/homebrew):
 
     brew install python@3.11 cmake ninja dfu-util
