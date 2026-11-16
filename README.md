@@ -8,6 +8,8 @@ Bluetooth. The display (a Waveshare ESP32-S3-Touch-LCD-1.85B) only draws them.
 **The Go Marker iPhone app is not part of this download.** It is being prepared for the App Store. Everything for the display is here: the
 firmware, the screens, the simulator, and the Bluetooth packet definitions (`proto/nav_protocol.h`) that any phone app has to follow.
 
+The [phone app guide (PDF)](docs/go-marker-app-guide.pdf) explains what each setting in the app does.
+
 Besides the map, weather, trip, compass, and clock screens, the display has a TPMS (tire pressure monitoring) screen and a pulsing red ring on every screen when a tire is low.
 A phone app feeds them with the tire pressure packet (TPMS) in `proto/nav_protocol.h`; the display only shows what it is sent.
 
